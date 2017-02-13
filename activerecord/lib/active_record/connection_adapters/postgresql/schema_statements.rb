@@ -167,17 +167,19 @@ module ActiveRecord
           result = query(<<-SQL, "SCHEMA")
             SELECT distinct i.relname, d.indisunique, d.indkey, pg_get_indexdef(d.indexrelid), t.oid,
                             pg_catalog.obj_description(i.oid, 'pg_class') AS comment,
-            (SELECT COUNT(*) FROM pg_opclass o
-               JOIN (SELECT unnest(string_to_array(d.indclass::text, ' '))::int oid) c
-                 ON o.oid = c.oid WHERE o.opcdefault = 'f')
+                            count(opcdefault) AS opclass
             FROM pg_class t
             INNER JOIN pg_index d ON t.oid = d.indrelid
             INNER JOIN pg_class i ON d.indexrelid = i.oid
             LEFT JOIN pg_namespace n ON n.oid = i.relnamespace
+            CROSS JOIN unnest(d.indclass) classoid
+            LEFT JOIN pg_opclass ON classoid = pg_opclass.oid
+            AND pg_opclass.opcdefault = 'f'
             WHERE i.relkind = 'i'
               AND d.indisprimary = 'f'
               AND t.relname = '#{table.identifier}'
               AND n.nspname = #{table.schema ? "'#{table.schema}'" : 'ANY (current_schemas(false))'}
+            GROUP BY i.relname, indisunique, indkey, pg_get_indexdef, t.oid, comment
             ORDER BY i.relname
           SQL
 
